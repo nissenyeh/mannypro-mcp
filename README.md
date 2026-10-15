@@ -1,6 +1,7 @@
 # mannypro-mcp
 
-讓 Claude Code、Codex 等 AI agent 直接讀《曼報 Pro》（[pro.manny-li.com](https://pro.manny-li.com)）會員文章的 MCP server。
+讓 Claude Code、Codex 等 AI agent 直接讀《曼報 Pro》（[pro.manny-li.com](https://pro.manny-li.com)）會員文章的 MCP server。  
+由 [Nissen](https://nissen.ghost.io/) 製作 · [LinkedIn](https://www.linkedin.com/in/nissen-yeh-923484169/)
 
 可以列文章、依分類篩選、搜尋標題，並把整篇文章（含小標、連結、圖表與圖說）轉成 Markdown；也能下載會員 Podcast，在你的電腦上免費轉成逐字稿。
 
