@@ -26,6 +26,10 @@ SSO_CLIENT_ID = "firstory.io"
 CONFIG_DIR = Path(os.environ.get("MANNYPRO_CONFIG_DIR", Path.home() / ".config" / "mannypro-mcp"))
 CREDENTIALS_FILE = CONFIG_DIR / "credentials.env"
 COOKIES_FILE = CONFIG_DIR / "cookies.json"
+# Full-text cache. Lives in the app-data dir (not ~/.cache) so cache cleaners don't wipe it.
+DATA_DIR = Path(os.environ.get("MANNYPRO_DATA_DIR", Path.home() / ".local" / "share" / "mannypro-mcp"))
+ARTICLE_CACHE_DIR = DATA_DIR / "articles"
+CACHE_MAX_AGE_DAYS = 30
 DOWNLOAD_DIR = Path(os.environ.get("MANNYPRO_DOWNLOAD_DIR", Path.home() / "Downloads" / "mannypro-podcast"))
 
 USER_AGENT = (
@@ -148,6 +152,51 @@ class Article:
     locked: bool = False
     tag: str | None = None
     attachments: list[str] = field(default_factory=list)
+    fetched_at: float = 0.0
+    from_cache: bool = False
+
+    @property
+    def path(self) -> str:
+        return urlparse(self.url).path.rsplit("/", 1)[-1]
+
+    def to_markdown(self, include_cover: bool = True) -> str:
+        meta = [f"# {self.title}", "", f"- 原文：{self.url}"]
+        if self.date:
+            meta.append(f"- 發布日期：{self.date}")
+        if self.tag:
+            meta.append(f"- 分類：{self.tag}")
+        for att in self.attachments:
+            meta.append(f"- 附件：{att}")
+        if include_cover and self.cover_url:
+            meta += ["", f"![封面]({self.cover_url})"]
+        return "\n".join(meta) + "\n\n" + (self.markdown or "（沒有抓到正文）")
+
+
+def _cache_file(path: str) -> Path:
+    return ARTICLE_CACHE_DIR / f"{path}.json"
+
+
+def load_cached(path: str) -> Article | None:
+    try:
+        data = json.loads(_cache_file(path).read_text())
+        return Article(**{**data, "from_cache": True})
+    except (FileNotFoundError, json.JSONDecodeError, TypeError):
+        return None
+
+
+def save_cached(article: Article) -> None:
+    DATA_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
+    ARTICLE_CACHE_DIR.mkdir(exist_ok=True, mode=0o700)
+    data = {k: v for k, v in article.__dict__.items() if k != "from_cache"}
+    f = _cache_file(article.path)
+    f.write_text(json.dumps(data, ensure_ascii=False))
+    f.chmod(0o600)
+
+
+def cached_paths() -> set[str]:
+    if not ARTICLE_CACHE_DIR.exists():
+        return set()
+    return {f.stem for f in ARTICLE_CACHE_DIR.glob("*.json")}
 
 
 def _load_credentials() -> tuple[str, str]:
@@ -354,8 +403,18 @@ class MannyProClient:
             raise ValueError(f"「{ref}」對到多篇文章，請指定其中一篇：\n{titles}")
         return f"{SITE}/posts/{ref}"
 
-    def fetch_article(self, ref: str, auto_login: bool = True) -> Article:
+    def fetch_article(self, ref: str, auto_login: bool = True, use_cache: bool = True,
+                      max_age_days: float | None = CACHE_MAX_AGE_DAYS) -> Article:
+        """Return an article, from the local full-text cache when it's fresh enough.
+
+        max_age_days=None accepts any cached copy (used for searching).
+        """
         url = self._article_url(ref)
+        path = urlparse(url).path.rsplit("/", 1)[-1]
+        if use_cache:
+            cached = load_cached(path)
+            if cached and (max_age_days is None or time.time() - cached.fetched_at < max_age_days * 86400):
+                return cached
         if auto_login and not self.has_session():
             self.login()
         article = self._fetch_and_parse(url)
@@ -365,10 +424,12 @@ class MannyProClient:
             article = self._fetch_and_parse(url)
         if not article.tag:
             # The logged-in page doesn't ship the Post object, so take the tag from the listing.
-            path = urlparse(article.url).path.rsplit("/", 1)[-1]
-            post = next((p for p in self.all_posts() if p.path == path), None)
+            post = next((p for p in self.all_posts() if p.path == article.path), None)
             if post:
                 article.tag = post.tag
+        if not article.locked and article.markdown:
+            article.fetched_at = time.time()
+            save_cached(article)
         return article
 
     def _fetch_and_parse(self, url: str) -> Article:

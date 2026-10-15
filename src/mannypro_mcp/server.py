@@ -4,21 +4,27 @@ from __future__ import annotations
 
 import re
 import time
+from pathlib import Path
+from urllib.parse import urlparse
 
+import httpx
 from mcp.server.mcpserver import MCPServer
 
 from . import transcribe as tr
-from .client import CREDENTIALS_FILE, DOWNLOAD_DIR, LoginError, MannyProClient, Post
+from .client import (ARTICLE_CACHE_DIR, CREDENTIALS_FILE, DOWNLOAD_DIR, Article, LoginError, MannyProClient,
+                     Post, cached_paths, load_cached)
 
 INSTRUCTIONS = """\
 曼報 Pro（pro.manny-li.com）文章工具。網站沒有全文搜尋 API。
 
-要找「哪些文章談到某個主題」時，照這四步，不要一次抓全部文章全文：
+要找「哪些文章談到某個主題」時：
+0. 先用 search_content 搜本機全文快取（讀過的文章都會自動存進快取）。如果結果說全部文章都在快取裡，就可以直接回報。
+   有文章不在快取時，接著照下面四步補搜那些文章；不要自己一次抓全部文章，只有使用者要求「建立全文索引」才用 build_cache。
 1. list_all_titles 取得所有文章標題（很輕量）。
 2. 依標題語意判斷哪些可能相關，不只比對關鍵字（例如找 FDE，也要想到 Palantir、企業導入 AI、主題文章刊出後幾個月的「你問我答」）。通常挑 10 篇上下。
 3. 用 grep_articles 只讀候選文章，搜關鍵字（可用正規表示式涵蓋中英文寫法）。
 4. 輸出：真的有談到的文章（附摘錄與網址）、讀了但沒提到的文章，並說明哪些文章只看過標題沒讀內文。結果不夠時再擴大候選。
-要讀整篇內容時用 get_article。
+要讀整篇內容時用 get_article。想把文章長期保存到自己的資料夾或 Obsidian，用 export_articles。
 
 會員 Podcast：list_episodes 列集數，download_episode 下載 mp3，transcribe_episode 在本機背景轉逐字稿。
 轉逐字稿需要幾分鐘到半小時：第一次呼叫會立刻回傳「已開始」，之後隔一段時間再用同樣參數呼叫就能看進度，完成時會回傳逐字稿檔案路徑，再讀那個檔案。
@@ -90,50 +96,160 @@ def grep_articles(articles: list[str], pattern: str, context: int = 150, max_sni
     except re.error as e:
         return f"pattern 不是合法的正規表示式：{e}"
     found, missed, failed = [], [], []
-    for i, ref in enumerate(articles):
-        if i:
-            time.sleep(0.5)
+    fetched = 0
+    for ref in articles:
         try:
-            a = client().fetch_article(ref)
+            if fetched:
+                time.sleep(0.5)
+            a = client().fetch_article(ref, max_age_days=None)
+            fetched += 0 if a.from_cache else 1
         except (LoginError, ValueError) as e:
             failed.append(f"- {ref}：{e}")
             continue
-        hits = [m.start() for m in regex.finditer(a.markdown)]
-        if not hits:
+        block = _snippets(a, regex, context, max_snippets)
+        if block:
+            found.append(block)
+        else:
             missed.append(f"- {a.title}（{a.url}）")
-            continue
-        snippets, last = [], -10**9
-        for h in hits:
-            if h - last < context * 2:
-                continue
-            last = h
-            snippets.append("  …" + a.markdown[max(0, h - context):h + context].replace("\n", " ") + "…")
-            if len(snippets) >= max_snippets:
-                break
-        found.append(f"### {a.title}（{len(hits)} 處）\n{a.url}\n" + "\n".join(snippets))
     out = [f"## 有提到（{len(found)} 篇）", *found, f"\n## 讀了但沒提到（{len(missed)} 篇）", *missed]
     if failed:
         out += [f"\n## 讀取失敗（{len(failed)} 篇）", *failed]
     return "\n".join(out)
 
 
-@mcp.tool()
-def search_articles(keyword: str, limit: int = 20) -> str:
-    """用關鍵字比對文章標題、副標、分類與網址 slug（不分大小寫，不搜內文）。
-
-    找主題相關文章時，建議改用 list_all_titles → 挑候選 → grep_articles 的流程，
-    因為很多文章標題不會直接寫關鍵字（例如 Visa 系列標題是「過路財神」）。
-    """
-    kw = keyword.strip().lower()
-    hits = [p for p in client().all_posts()
-            if kw in p.title.lower() or kw in p.subtitle.lower() or kw in (p.tag or "").lower()
-            or kw in (p.slug or "").lower()]
+def _snippets(a: Article, regex: re.Pattern, context: int, max_snippets: int) -> str | None:
+    hits = [m.start() for m in regex.finditer(a.markdown)]
     if not hits:
-        return f"找不到標題含「{keyword}」的文章。"
-    lines = [f"找到 {len(hits)} 篇" + (f"，顯示前 {limit} 篇" if len(hits) > limit else "") + "："]
-    lines += [_post_line(p) for p in hits[:limit]]
-    return "\n".join(lines)
+        return None
+    snippets, last = [], -10**9
+    for h in hits:
+        if h - last < context * 2:
+            continue
+        last = h
+        snippets.append("  …" + a.markdown[max(0, h - context):h + context].replace("\n", " ") + "…")
+        if len(snippets) >= max_snippets:
+            break
+    date = f"{a.date}，" if a.date else ""
+    return f"### {a.title}（{date}{len(hits)} 處）\n{a.url}\n" + "\n".join(snippets)
 
+
+@mcp.tool()
+def search_content(pattern: str, context: int = 150, max_snippets: int = 2) -> str:
+    """在本機全文快取裡搜尋所有已存的文章內文（不連網站，很快）。
+
+    快取是邊用邊存的：讀過的文章才會在裡面。結果會說明搜了幾篇全文、幾篇沒在快取裡；
+    沒在快取裡的文章可以照「看標題挑候選 → grep_articles」補搜，或請使用者決定要不要 build_cache。
+
+    Args:
+        pattern: 正規表示式，不分大小寫，例如 "FDE|Forward[- ]Deployed|前線部署"。
+    """
+    try:
+        regex = re.compile(pattern, re.I)
+    except re.error as e:
+        return f"pattern 不是合法的正規表示式：{e}"
+    posts = client().all_posts()
+    cached = cached_paths()
+    found, not_cached = [], []
+    for p in posts:
+        if p.path not in cached:
+            not_cached.append(p)
+            continue
+        a = load_cached(p.path)
+        block = _snippets(a, regex, context, max_snippets) if a else None
+        if block:
+            found.append(block)
+    searched = len(posts) - len(not_cached)
+    out = [f"搜了快取裡 {searched}/{len(posts)} 篇的全文，{len(found)} 篇有提到：", *found]
+    if not_cached:
+        out.append(f"\n⚠️ 還有 {len(not_cached)} 篇不在快取裡，沒有搜到內文"
+                   "（可用 list_all_titles 看標題挑候選、再用 grep_articles 讀；"
+                   "或問使用者要不要用 build_cache 把全部文章存進快取）。")
+    return "\n".join(out)
+
+
+@mcp.tool()
+def build_cache(batch_size: int = 25) -> str:
+    """把還沒存進全文快取的文章補抓下來（只在使用者要求「建立全文索引」時使用）。
+
+    每次呼叫最多抓 batch_size 篇、每篇間隔 1 秒，避免一次大量連線；沒抓完會說還剩幾篇，再呼叫一次繼續。
+    快取存在使用者電腦的 ~/.local/share/mannypro-mcp/articles/。
+    """
+    c = client()
+    posts = c.all_posts()
+    todo = [p for p in posts if p.path not in cached_paths()]
+    done, failed = 0, []
+    for p in todo[:max(1, min(batch_size, 40))]:
+        if done or failed:
+            time.sleep(1)
+        try:
+            a = c.fetch_article(p.url)
+            if a.locked:
+                return f"讀不到全文（付費牆），停止建立快取。帳號可能沒有會員資格。已存 {done} 篇。"
+            done += 1
+        except (ValueError, httpx.HTTPError) as e:
+            failed.append(f"- {p.title}：{e}")
+        except LoginError as e:
+            return f"登入失敗：{e}"
+    remaining = len(posts) - len(cached_paths())
+    msg = [f"這次存了 {done} 篇。快取共 {len(posts) - remaining}/{len(posts)} 篇，位置：{ARTICLE_CACHE_DIR}"]
+    if failed:
+        msg += ["失敗：", *failed]
+    msg.append(f"還剩 {remaining} 篇，再呼叫一次 build_cache 繼續。" if remaining else "✅ 全部文章都在快取裡了，之後用 search_content 就能搜全文。")
+    return "\n".join(msg)
+
+
+@mcp.tool()
+def export_articles(articles: list[str], folder: str, download_images: bool = False) -> str:
+    """把文章匯出成 Markdown 檔，存到使用者指定的資料夾（例如 Obsidian 筆記庫），方便長期保存。
+
+    Args:
+        articles: 文章 slug、網址或標題關鍵字的清單。
+        folder: 要存的資料夾路徑，例如 "~/Documents/曼報" 或 Obsidian vault 裡的資料夾。不存在會自動建立。
+        download_images: true 時把文中圖片下載到 folder/assets/，Markdown 改用本機圖片路徑（圖床失效也看得到）。
+    """
+    dest = Path(folder).expanduser()
+    dest.mkdir(parents=True, exist_ok=True)
+    c = client()
+    saved, failed = [], []
+    for ref in articles:
+        try:
+            a = c.fetch_article(ref)
+        except (LoginError, ValueError) as e:
+            failed.append(f"- {ref}：{e}")
+            continue
+        if a.locked:
+            failed.append(f"- {a.title}：付費牆，讀不到全文")
+            continue
+        md = a.to_markdown()
+        if download_images:
+            md = _localize_images(md, dest / "assets" / a.path, f"assets/{a.path}")
+        name = re.sub(r'[\\/:*?"<>|\n]+', " ", f"{(a.date or '').replace('.', '-')} {a.title}").strip()[:150]
+        out = dest / f"{name}.md"
+        out.write_text(md + "\n")
+        saved.append(f"- {out}")
+    msg = [f"已匯出 {len(saved)} 篇到 {dest}：", *saved]
+    if failed:
+        msg += ["失敗：", *failed]
+    return "\n".join(msg)
+
+
+def _localize_images(md: str, img_dir: Path, rel: str) -> str:
+    img_dir.mkdir(parents=True, exist_ok=True)
+
+    def repl(m: re.Match) -> str:
+        alt, url = m.group(1), m.group(2)
+        name = re.sub(r"[^A-Za-z0-9._-]", "_", urlparse(url).path.rsplit("/", 1)[-1]) or "image"
+        target = img_dir / name
+        if not target.exists():
+            try:
+                r = client().http.get(url)
+                r.raise_for_status()
+                target.write_bytes(r.content)
+            except httpx.HTTPError:
+                return m.group(0)
+        return f"![{alt}]({rel}/{name})"
+
+    return re.sub(r"!\[([^\]]*)\]\((https?://[^)\s]+)\)", repl, md)
 
 @mcp.tool()
 def get_article(article: str, include_cover: bool = True) -> str:
@@ -149,17 +265,7 @@ def get_article(article: str, include_cover: bool = True) -> str:
         return f"登入失敗：{e}"
     if a.locked:
         return (f"《{a.title}》仍是付費牆畫面，可能帳號沒有會員資格或登入失效。\n{a.url}")
-    meta = [f"# {a.title}", "", f"- 原文：{a.url}"]
-    if a.date:
-        meta.append(f"- 發布日期：{a.date}")
-    if a.tag:
-        meta.append(f"- 分類：{a.tag}")
-    for att in a.attachments:
-        meta.append(f"- 附件：{att}")
-    if include_cover and a.cover_url:
-        meta += ["", f"![封面]({a.cover_url})"]
-    return "\n".join(meta) + "\n\n" + (a.markdown or "（沒有抓到正文）")
-
+    return a.to_markdown(include_cover)
 
 def _fmt_dur(sec: int) -> str:
     return f"{sec // 60} 分鐘" if sec < 3600 else f"{sec // 3600} 小時 {sec % 3600 // 60} 分"
