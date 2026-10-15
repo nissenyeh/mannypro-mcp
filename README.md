@@ -199,7 +199,7 @@ args = ["--directory", "/Users/you/mannypro-mcp", "run", "mannypro-mcp"]
 
 <img src="docs/images/example-visa-roic.png" alt="在 Claude Code 問 Visa 商業解碼最後一篇怎麼算 ROIC 的範例" width="720">
 
-（截圖中原文的付費圖表已模糊處理。）
+（截圖中原文付費圖表的數字已模糊處理。）
 
 ### 找「哪些文章談到某個主題」
 
