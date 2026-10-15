@@ -26,6 +26,7 @@ SSO_CLIENT_ID = "firstory.io"
 CONFIG_DIR = Path(os.environ.get("MANNYPRO_CONFIG_DIR", Path.home() / ".config" / "mannypro-mcp"))
 CREDENTIALS_FILE = CONFIG_DIR / "credentials.env"
 COOKIES_FILE = CONFIG_DIR / "cookies.json"
+DOWNLOAD_DIR = Path(os.environ.get("MANNYPRO_DOWNLOAD_DIR", Path.home() / "Downloads" / "mannypro-podcast"))
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -51,6 +52,16 @@ query PlayerPostConnection($showId: ID!, $first: Int, $after: String, $postTagId
     }
     pageInfo { hasNextPage endCursor }
     totalCount
+  }
+}
+"""
+
+EPISODE_CONNECTION_QUERY = """
+query PlayerEpisodeConnection($showId: ID!, $after: String) {
+  playerEpisodeConnection(showId: $showId, first: 50, after: $after,
+                          orderBy: {field: PUBLISHED_AT, direction: DESC}) {
+    edges { node { id title publishedAt duration } }
+    pageInfo { hasNextPage endCursor }
   }
 }
 """
@@ -99,6 +110,32 @@ class Post:
             created_at=node.get("publishedAt") or node.get("createdAt") or "",
             cover_url=node.get("coverUrl"),
         )
+
+
+@dataclass
+class Episode:
+    id: str
+    title: str
+    published_at: str
+    duration_sec: int
+
+    @property
+    def url(self) -> str:
+        return f"{SITE}/episodes/{self.id}"
+
+    @property
+    def date(self) -> str:
+        return self.published_at[:10]
+
+    @property
+    def filename_stem(self) -> str:
+        safe = re.sub(r'[\\/:*?"<>|\n]+', " ", self.title).strip()
+        return f"{self.date} {safe}"[:150]
+
+    @classmethod
+    def from_node(cls, node: dict) -> "Episode":
+        return cls(id=node["id"], title=node["title"].strip(), published_at=node.get("publishedAt") or "",
+                   duration_sec=int((node.get("duration") or 0) / 1000))
 
 
 @dataclass
@@ -341,6 +378,78 @@ class MannyProClient:
         r.raise_for_status()
         self._save_cookies()
         return parse_article(r.text, str(r.url))
+
+    # ---------- podcast episodes ----------
+
+    def list_episodes(self) -> list[Episode]:
+        episodes: list[Episode] = []
+        cursor = None
+        while True:
+            r = self.http.post(GRAPHQL, headers={"origin": SITE}, json={
+                "query": EPISODE_CONNECTION_QUERY,
+                "variables": {"showId": SHOW_ID, "after": cursor},
+            })
+            r.raise_for_status()
+            payload = r.json()
+            if payload.get("errors"):
+                raise RuntimeError(payload["errors"][0].get("message"))
+            conn = payload["data"]["playerEpisodeConnection"]
+            episodes += [Episode.from_node(e["node"]) for e in conn["edges"]]
+            if not conn["pageInfo"]["hasNextPage"]:
+                return episodes
+            cursor = conn["pageInfo"]["endCursor"]
+
+    def resolve_episode(self, ref: str) -> Episode:
+        ref = ref.strip()
+        m = re.search(r"/episodes/([a-z0-9]+)", ref)
+        if m:
+            ref = m.group(1)
+        episodes = self.list_episodes()
+        for ep in episodes:
+            if ref in (ep.id, ep.title):
+                return ep
+        matches = [ep for ep in episodes if ref.lower() in ep.title.lower()]
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            titles = "\n".join(f"- {ep.title}（id: {ep.id}）" for ep in matches[:10])
+            raise ValueError(f"「{ref}」對到多集，請指定其中一集：\n{titles}")
+        raise ValueError(f"找不到 Podcast 單集「{ref}」，請先用 list_episodes 查。")
+
+    def episode_audio_url(self, ep: Episode, auto_login: bool = True) -> str:
+        """The audio URL is only rendered into the episode page for logged-in members."""
+        if auto_login and not self.has_session():
+            self.login()
+        url = self._audio_url_from_page(ep)
+        if not url and auto_login:
+            self.login()
+            url = self._audio_url_from_page(ep)
+        if not url:
+            raise LoginError("拿不到音檔網址：帳號可能沒有會員資格，或登入失效。")
+        return url
+
+    def _audio_url_from_page(self, ep: Episode) -> str | None:
+        r = self.http.get(ep.url)
+        r.raise_for_status()
+        self._save_cookies()
+        m = re.search(r'\\"id\\":\\"' + re.escape(ep.id) + r'\\",.*?\\"audioUrl\\":(null|\\"(.*?)\\")', r.text)
+        return m.group(2) if m and m.group(2) else None
+
+    def download_episode(self, ep: Episode, dest_dir: Path | None = None) -> Path:
+        dest_dir = dest_dir or DOWNLOAD_DIR
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        path = dest_dir / f"{ep.filename_stem}.mp3"
+        if path.exists() and path.stat().st_size > 0:
+            return path
+        audio_url = self.episode_audio_url(ep)
+        tmp = path.with_suffix(".part")
+        with self.http.stream("GET", audio_url) as r:
+            r.raise_for_status()
+            with open(tmp, "wb") as f:
+                for chunk in r.iter_bytes(1 << 20):
+                    f.write(chunk)
+        tmp.rename(path)
+        return path
 
 
 # ---------- HTML parsing ----------

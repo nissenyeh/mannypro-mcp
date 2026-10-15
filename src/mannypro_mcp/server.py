@@ -7,7 +7,8 @@ import time
 
 from mcp.server.mcpserver import MCPServer
 
-from .client import CREDENTIALS_FILE, LoginError, MannyProClient, Post
+from . import transcribe as tr
+from .client import CREDENTIALS_FILE, DOWNLOAD_DIR, LoginError, MannyProClient, Post
 
 INSTRUCTIONS = """\
 曼報 Pro（pro.manny-li.com）文章工具。網站沒有全文搜尋 API。
@@ -18,6 +19,9 @@ INSTRUCTIONS = """\
 3. 用 grep_articles 只讀候選文章，搜關鍵字（可用正規表示式涵蓋中英文寫法）。
 4. 輸出：真的有談到的文章（附摘錄與網址）、讀了但沒提到的文章，並說明哪些文章只看過標題沒讀內文。結果不夠時再擴大候選。
 要讀整篇內容時用 get_article。
+
+會員 Podcast：list_episodes 列集數，download_episode 下載 mp3，transcribe_episode 在本機背景轉逐字稿。
+轉逐字稿需要幾分鐘到半小時：第一次呼叫會立刻回傳「已開始」，之後隔一段時間再用同樣參數呼叫就能看進度，完成時會回傳逐字稿檔案路徑，再讀那個檔案。
 """
 
 mcp = MCPServer("mannypro", instructions=INSTRUCTIONS)
@@ -155,6 +159,79 @@ def get_article(article: str, include_cover: bool = True) -> str:
     if include_cover and a.cover_url:
         meta += ["", f"![封面]({a.cover_url})"]
     return "\n".join(meta) + "\n\n" + (a.markdown or "（沒有抓到正文）")
+
+
+def _fmt_dur(sec: int) -> str:
+    return f"{sec // 60} 分鐘" if sec < 3600 else f"{sec // 3600} 小時 {sec % 3600 // 60} 分"
+
+
+@mcp.tool()
+def list_episodes() -> str:
+    """列出《曼報 Pro》會員 Podcast 的所有集數（日期、長度、標題、id），新到舊。"""
+    eps = client().list_episodes()
+    lines = [f"共 {len(eps)} 集："]
+    lines += [f"- {ep.date}｜{_fmt_dur(ep.duration_sec)}｜{ep.title}\n  id: {ep.id}　{ep.url}" for ep in eps]
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def download_episode(episode: str) -> str:
+    """下載一集會員 Podcast 的 mp3 到本機（需要會員登入，會自動登入）。
+
+    Args:
+        episode: 集數 id、網址（https://pro.manny-li.com/episodes/...）或標題關鍵字。
+    """
+    c = client()
+    try:
+        ep = c.resolve_episode(episode)
+        path = c.download_episode(ep)
+    except (LoginError, ValueError) as e:
+        return f"下載失敗：{e}"
+    size_mb = path.stat().st_size / 1e6
+    return f"已下載《{ep.title}》（{_fmt_dur(ep.duration_sec)}，{size_mb:.0f} MB）\n檔案：{path}"
+
+
+@mcp.tool()
+def transcribe_episode(episode: str, model: str | None = None) -> str:
+    """把一集會員 Podcast 轉成逐字稿（在本機用 faster-whisper 轉，免費、不需要 API key）。
+
+    轉錄在背景進行：第一次呼叫會開始轉並立刻回傳；之後用同樣參數再呼叫，會回報進度，
+    完成後回傳逐字稿 Markdown 的路徑與開頭內容。第一次使用會先下載語音模型（small 約 500 MB）。
+
+    Args:
+        episode: 集數 id、網址或標題關鍵字。
+        model: whisper 模型，預設 small。可選 tiny / base / small / medium / large-v3-turbo，越大越準也越慢。
+    """
+    c = client()
+    try:
+        ep = c.resolve_episode(episode)
+    except ValueError as e:
+        return str(e)
+    out_md = DOWNLOAD_DIR / f"{ep.filename_stem}.md"
+    st = tr.read_status(out_md)
+
+    if st and st.get("state") == "done" and out_md.exists():
+        text = out_md.read_text()
+        return (f"逐字稿已完成：{out_md}\n（共 {len(text)} 字，用 {st.get('model')} 模型，"
+                f"花了 {st.get('elapsedSec', 0) // 60} 分鐘）\n\n--- 開頭 ---\n{text[:1500]}")
+    if tr.is_running(out_md):
+        pct = round((st.get("progress") or 0) * 100)
+        phase = "載入模型中（第一次會先下載模型）" if st.get("state") == "loading" else f"轉錄中 {pct}%"
+        return f"《{ep.title}》{phase}，已經過 {st.get('elapsedSec', 0) // 60} 分鐘。稍後再呼叫一次查看進度。"
+
+    note = ""
+    if st and st.get("state") == "error":
+        note = f"（上次失敗：{st.get('error')}，重新開始）\n"
+    try:
+        audio = c.download_episode(ep)
+    except LoginError as e:
+        return f"下載音檔失敗：{e}"
+    model = model or tr.DEFAULT_MODEL
+    tr.start(audio, out_md, ep.title, ep.url, model)
+    minutes = max(1, round(ep.duration_sec * 0.5 / 60))
+    return (f"{note}已開始在背景轉錄《{ep.title}》（{_fmt_dur(ep.duration_sec)}，{model} 模型）。\n"
+            f"一般電腦大約要 {minutes} 分鐘上下（Apple M 系列晶片通常更快）。\n"
+            f"完成後逐字稿會存在：{out_md}\n稍後用同樣參數再呼叫 transcribe_episode 查看進度。")
 
 
 @mcp.tool()

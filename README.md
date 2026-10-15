@@ -2,7 +2,7 @@
 
 讓 Claude Code、Codex 等 AI agent 直接讀《曼報 Pro》（[pro.manny-li.com](https://pro.manny-li.com)）會員文章的 MCP server。
 
-可以列文章、依分類篩選、搜尋標題，並把整篇文章（含小標、連結、圖表與圖說）轉成 Markdown。
+可以列文章、依分類篩選、搜尋標題，並把整篇文章（含小標、連結、圖表與圖說）轉成 Markdown；也能下載會員 Podcast，在你的電腦上免費轉成逐字稿。
 
 > [!IMPORTANT]
 > **⚠️ 你需要自己有《曼報 Pro》的付費會員帳號才能讀全文。**
@@ -126,6 +126,9 @@ AI 先看完 122 篇標題，挑出 25 篇可能相關的去讀內文，最後�
 | `search_articles(keyword)` | 用關鍵字比對標題／副標／分類／網址（不搜內文） | 否 |
 | `grep_articles(articles, pattern)` | 只讀指定幾篇的全文，列出符合關鍵字的段落 | 是（自動） |
 | `get_article(article)` | 抓全文轉 Markdown；`article` 可以是網址、slug 或標題關鍵字 | 是（自動登入） |
+| `list_episodes` | 列出會員 Podcast 全部集數 | 否 |
+| `download_episode(episode)` | 下載一集 Podcast 的 mp3 到本機 | 是（自動） |
+| `transcribe_episode(episode)` | 在你的電腦上把一集 Podcast 轉成逐字稿（免費、不需要 API key） | 是（自動） |
 | `login_status` | 檢查帳密能不能登入、能不能讀到全文 | 是 |
 
 ---
@@ -244,6 +247,24 @@ args = ["--directory", "/Users/you/mannypro-mcp", "run", "mannypro-mcp"]
 - 「抓曼報〈名利雙收 I〉全文，整理成重點筆記」
 - 「把商業解碼『因貨得福』系列 I–IV 全部抓下來，合成一份 Markdown」
 - 「幫我看 Visa 商業解碼最後一篇，並且解釋他們怎麼算 ROIC」
+- 「曼報 Podcast 有哪些集？把 Stripe 那集轉成逐字稿」
+
+### 會員 Podcast：下載與轉逐字稿
+
+跟 AI 說「把曼報 Podcast 的 Stripe 那集轉成逐字稿」就可以，它會依序：
+
+1. 用你的會員帳號登入，下載那集的 mp3
+2. **在你自己的電腦上**用 [faster-whisper](https://github.com/SYSTRAN/faster-whisper) 轉成繁體中文逐字稿（每 30 秒一段、附時間標記）
+3. 轉好後讀逐字稿，幫你整理重點
+
+要知道的事：
+
+- **免費、不需要申請任何 API key**，音檔也不會上傳到別的服務。
+- **第一次用會先下載語音模型**（預設 `small`，約 500 MB），之後就不用再下載。
+- **需要一點時間**：一般電腦大約是音檔長度的一半（實測 17 分鐘的一集花了 8 分鐘），Apple M 系列晶片通常更快。轉錄在背景跑，AI 會隔一段時間回來看進度，你可以先做別的事。
+- **是自動轉錄，會有少量錯字**（例如同音字）。想要更準可以跟 AI 說「用 large-v3-turbo 模型轉」，會更慢一些。
+- 檔案存在 `~/Downloads/mannypro-podcast/`（mp3 和逐字稿 `.md` 放在一起），可以用環境變數 `MANNYPRO_DOWNLOAD_DIR` 改位置。
+- 音檔和逐字稿一樣是付費內容，**請只供個人使用，不要分享出去**。
 
 ### 找「哪些文章談到某個主題」
 
