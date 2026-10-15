@@ -60,6 +60,28 @@ AI 先看完 122 篇標題，挑出 25 篇可能相關的去讀內文，最後�
 
 ---
 
+## 🔒 你的帳密存在哪裡？安全嗎？
+
+**一句話：帳密只存在你自己的電腦裡，只會拿去登入 Firstory 官方網站，不會上傳到 GitHub，也不會傳給其他人。**
+
+| 存什麼 | 存在哪裡 | 誰讀得到 |
+|---|---|---|
+| Email＋密碼 | 你電腦裡的 `~/.config/mannypro-mcp/credentials.env`<br>（Mac 的完整路徑是 `/Users/你的使用者名稱/.config/mannypro-mcp/credentials.env`） | 只有你電腦上的你這個帳號（檔案權限設成 600） |
+| 登入後的通行證（cookie） | 同一個資料夾的 `cookies.json` | 同上，權限 600 |
+
+- **密碼只會送到一個地方：** Firstory 官方登入網址 `https://open.firstory.fm`（就是你平常登入曼報 Pro 的那一頁）。程式碼是公開的，可以在 [`client.py`](src/mannypro_mcp/client.py) 的 `login()` 看到這是唯一用到密碼的地方。
+- **不會進 GitHub：** 帳密檔放在你的家目錄，不在這個 repo 資料夾裡，`git push` 也推不上去。
+- **不會寫進 Claude Code / Codex 的設定檔：** 照預設的「帳密檔」方式安裝，AI 工具的設定裡只有啟動指令，沒有帳密。
+- **想在 Finder 找到它：** 按 `⌘ + Shift + G`，貼上 `~/.config/mannypro-mcp`，按 Enter。這是隱藏資料夾，平常不會看到。
+- **想刪掉：** 刪除整個 `~/.config/mannypro-mcp` 資料夾就好（或跟 AI 說「幫我刪除曼報 MCP 的帳密」）。刪掉之後這個工具就讀不到全文了。
+
+**有兩點要老實跟你說：**
+
+1. **帳密檔是一般文字檔，沒有加密。** 權限設定能擋住電腦上的其他使用者，但擋不住「用你的帳號登入電腦的人」。所以建議幫 Firstory **設一組沒在別的地方用過的密碼**，就算外洩也不會影響你的其他帳號。
+2. **如果你把密碼直接打在對話裡給 AI，** 這段對話會經過 AI 服務商（Anthropic 或 OpenAI）。不想這樣的話，請 AI「建好帳密檔就好，我自己填」，再用文字編輯器打開那個檔案自己填（在終端機輸入 `open -e ~/.config/mannypro-mcp/credentials.env`）。
+
+---
+
 ## 🚀 最簡單的安裝方式：交給 AI 幫你裝（不用懂程式）
 
 如果你已經有 [Claude Code](https://claude.com/claude-code) 或 [Codex](https://developers.openai.com/codex)，不用自己打任何指令，請 AI 照這份說明幫你裝好。
@@ -88,7 +110,7 @@ AI 先看完 122 篇標題，挑出 25 篇可能相關的去讀內文，最後�
 - 「列出曼報最新 10 篇文章」
 - 「抓曼報〈名利雙收 I〉全文，整理成重點筆記」
 
-> 💡 帳密只會存在你自己電腦的 `~/.config/mannypro-mcp/credentials.env`，不會上傳到 GitHub。不想把密碼打給 AI 的話，可以請它「建好帳密檔就好，我自己填」，再自己打開那個檔案填入。
+> 🔒 帳密只會存在你自己的電腦，詳見上面的「[你的帳密存在哪裡？安全嗎？](#-你的帳密存在哪裡安全嗎)」。不想把密碼打給 AI 的話，可以請它「建好帳密檔就好，我自己填」。
 
 想自己一步步手動安裝的人，請看下面的完整說明。
 
@@ -140,6 +162,7 @@ uv sync
 
 ```bash
 mkdir -p ~/.config/mannypro-mcp
+chmod 700 ~/.config/mannypro-mcp
 cat > ~/.config/mannypro-mcp/credentials.env <<'EOF'
 MANNYPRO_EMAIL=you@example.com
 MANNYPRO_PASSWORD=你的密碼

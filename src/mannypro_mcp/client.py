@@ -164,7 +164,7 @@ class MannyProClient:
             pass
 
     def _save_cookies(self) -> None:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True, mode=0o700)
         data = [
             {"name": c.name, "value": c.value, "domain": c.domain, "path": c.path}
             for c in self.http.cookies.jar
