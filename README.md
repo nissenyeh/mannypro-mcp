@@ -42,7 +42,29 @@ uv sync
 
 ### 1-3 設定你自己的帳密（必做）
 
-這個 MCP server **不附帶任何帳號**，一定要填你自己的《曼報 Pro》登入帳密（就是在 [open.firstory.fm](https://open.firstory.fm/login) 用 Email 登入的那組），沒設定的話只能列文章、讀不到全文。
+這個 MCP server **不附帶任何帳號**，一定要填你自己的《曼報 Pro》登入帳密，沒設定的話只能列文章、讀不到全文。
+
+它只支援 **Email＋密碼** 登入。很多人是用 Google / Apple / Facebook 登入曼報 Pro，這樣的帳號預設沒有密碼，要先照下面的步驟設一組；已經有密碼的人可以直接跳到「寫入帳密」。
+
+#### 步驟一：設定 Firstory 密碼
+
+1. 登入 [pro.manny-li.com](https://pro.manny-li.com)，點右上角頭像 →「**會員管理**」
+
+   <img src="docs/images/step1-member-menu.png" alt="點右上角頭像，選會員管理" width="520">
+
+2. 在「帳戶資訊」頁點「**會員中心**」連結（信箱、密碼、第三方綁定都在 Firstory 會員中心管理）
+
+   <img src="docs/images/step2-member-center.png" alt="帳戶資訊頁點會員中心" width="640">
+
+3. 在 Firstory 的「帳戶資訊」頁，「**密碼**」欄位按「**修改**」設定密碼
+
+   <img src="docs/images/step3-set-password.png" alt="Firstory 帳戶資訊的密碼欄位，按修改" width="640">
+
+   - **Email** 就是這一頁上方 Email 欄位顯示的信箱
+   - 設好密碼後 Google 等綁定帳號照常能用，不需要解除綁定
+   - 可以到 [open.firstory.fm/login](https://open.firstory.fm/login) 用「Email＋密碼」登入一次，確認這組帳密可用
+
+#### 步驟二：寫入帳密
 
 兩種方式擇一：
 
@@ -58,8 +80,6 @@ chmod 600 ~/.config/mannypro-mcp/credentials.env
 ```
 
 **方式 B：環境變數**——在下面註冊 MCP 時用 `MANNYPRO_EMAIL`、`MANNYPRO_PASSWORD` 帶進去（範例見各 agent 的說明）。
-
-> 只支援 Email＋密碼登入。如果你平常是用 Google / Apple / Facebook 登入 Firstory，請先到 Firstory 帳號設定裡設一組密碼。
 
 登入成功後，session cookie 會存在 `~/.config/mannypro-mcp/cookies.json`（權限 600），過期時會自動用帳密重新登入。
 
@@ -164,7 +184,7 @@ args = ["--directory", "/Users/you/mannypro-mcp", "run", "mannypro-mcp"]
 |---|---|
 | `找不到帳密` | 沒做 1-3；檢查 `~/.config/mannypro-mcp/credentials.env` 或環境變數 |
 | `Firstory 登入失敗：user_not_found` | Email 打錯，或這個 Email 沒有 Firstory 帳號 |
-| 其他 `Firstory 登入失敗：…` | 多半是密碼錯；用社群帳號登入的人要先設密碼 |
+| 其他 `Firstory 登入失敗：…` | 多半是密碼錯；用 Google 等社群帳號登入的人要先照 1-3 步驟一設密碼 |
 | `仍是付費牆畫面` | 帳號登入成功但沒有《曼報 Pro》會員資格（或會員已過期） |
 | 想強制重新登入 | 刪掉 `~/.config/mannypro-mcp/cookies.json` |
 | agent 裡看不到工具 | 註冊後要開新 session；`claude mcp list` / `codex mcp list` 看是否 Connected |
