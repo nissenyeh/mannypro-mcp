@@ -6,6 +6,40 @@
 
 > ⚠️ 你需要自己有《曼報 Pro》的付費會員帳號才能讀全文，這個工具只是用你的帳號登入後代為讀取。請只供個人閱讀、整理筆記使用，不要轉載或散布付費內容。
 
+## 🚀 最簡單的安裝方式：交給 AI 幫你裝（不用懂程式）
+
+如果你已經有 [Claude Code](https://claude.com/claude-code) 或 [Codex](https://developers.openai.com/codex)，不用自己打任何指令，請 AI 照這份說明幫你裝好。
+
+**開始前先確認一件事：** 你的曼報 Pro 帳號要有「Email＋密碼」。平常用 Google / Apple / Facebook 登入的人，先照下面 [1-3 步驟一](#步驟一設定-firstory-密碼) 的截圖設一組密碼（大約 1 分鐘）。
+
+**接著三步：**
+
+1. 打開終端機（Mac：按 `⌘ + 空白鍵`，輸入「終端機」或「Terminal」後按 Enter），輸入 `claude` 按 Enter 開啟 Claude Code（用 Codex 的人輸入 `codex`）。
+
+2. 把下面這段**整段複製**，貼進去按 Enter：
+
+   ```text
+   幫我安裝這個 MCP server：https://github.com/nissenyeh/mannypro-mcp
+   請把 repo clone 到 ~/mannypro-mcp，讀 README，照最後面「給 AI agent 的安裝步驟」一步一步做完。
+   需要我的曼報 Pro 帳密時再問我；裝好後幫我測試能不能讀到全文。
+   ```
+
+3. 過程中 AI 會：
+   - 請你允許它執行指令 → 選「Yes」或「允許」
+   - 問你曼報 Pro 的 **Email 和密碼** → 直接回覆它
+   - 最後回報「可以讀全文」就代表成功了
+
+**裝好之後：** 把 Claude Code / Codex 關掉重開（輸入 `/exit` 再重新輸入 `claude`），就可以直接用中文叫它讀曼報，例如：
+
+- 「列出曼報最新 10 篇文章」
+- 「抓曼報〈名利雙收 I〉全文，整理成重點筆記」
+
+> 💡 帳密只會存在你自己電腦的 `~/.config/mannypro-mcp/credentials.env`，不會上傳到 GitHub。不想把密碼打給 AI 的話，可以請它「建好帳密檔就好，我自己填」，再自己打開那個檔案填入。
+
+想自己一步步手動安裝的人，請看下面的完整說明。
+
+---
+
 ## 工具
 
 | 工具 | 用途 | 需要登入 |
@@ -200,3 +234,26 @@ args = ["--directory", "/Users/you/mannypro-mcp", "run", "mannypro-mcp"]
 5. 全文從登入後的文章頁 HTML 解析，用 [markdownify](https://github.com/matthewwithanm/python-markdownify) 轉成 Markdown
 
 網站改版時解析可能會壞，歡迎開 issue。
+
+---
+
+## 給 AI agent 的安裝步驟
+
+> 這一段是寫給 Claude Code / Codex 等 AI agent 看的：使用者請你安裝時，依序執行，每一步確認成功再進下一步。使用者多半不熟指令，請用白話跟他說明進度。
+
+1. **確認 uv**：執行 `uv --version`。沒有的話執行 `curl -LsSf https://astral.sh/uv/install.sh | sh`，然後用 `~/.local/bin/uv` 或重新載入 shell 後的 `uv`。
+2. **取得程式**：若 `~/mannypro-mcp` 不存在，`git clone https://github.com/nissenyeh/mannypro-mcp.git ~/mannypro-mcp`；已存在就 `git -C ~/mannypro-mcp pull`。接著 `uv --directory ~/mannypro-mcp sync`。
+3. **帳密**：
+   - 問使用者曼報 Pro（Firstory）的登入 Email 與密碼。如果他說平常用 Google 等社群帳號登入、沒有密碼，請他照 README「1-3 步驟一」的截圖先設定密碼。
+   - 寫入 `~/.config/mannypro-mcp/credentials.env`（內容兩行：`MANNYPRO_EMAIL=...`、`MANNYPRO_PASSWORD=...`），資料夾權限 700、檔案權限 600。
+   - 如果使用者想自己填，就建立兩個值留空的檔案，告訴他檔案路徑，等他說填好再繼續。
+   - 不要把帳密寫進 repo、MCP 設定檔或任何其他地方。
+4. **測試登入**：執行
+   `uv --directory ~/mannypro-mcp run python -c "from mannypro_mcp.server import login_status; print(login_status())"`
+   - 看到「可以讀全文」才算成功。
+   - 失敗時對照 README 的「疑難排解」，用白話告訴使用者該怎麼修（例如密碼打錯、帳號沒有會員資格）。
+5. **註冊 MCP**（用絕對路徑，`~` 先展開成實際家目錄）：
+   - Claude Code：`claude mcp add --scope user mannypro -- uv --directory <家目錄>/mannypro-mcp run mannypro-mcp`，再用 `claude mcp list` 確認 `mannypro` 顯示 Connected。
+   - Codex：`codex mcp add mannypro -- uv --directory <家目錄>/mannypro-mcp run mannypro-mcp`，再用 `codex mcp list` 確認。
+   - 如果 `uv` 不在 PATH（例如剛安裝），command 改用 uv 的絕對路徑（`which uv` 或 `~/.local/bin/uv`）。
+6. **告訴使用者**：已經裝好；需要**關掉並重新開啟** Claude Code / Codex 才會出現 mannypro 工具；附上兩三句可以直接說的範例（如「列出曼報最新 10 篇文章」）。
