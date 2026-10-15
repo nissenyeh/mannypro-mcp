@@ -13,6 +13,28 @@
 >
 > 👉 還不是會員？**[訂閱《曼報 Pro》](https://pro.manny-li.com/join)**，支持作者持續產出深度內容。
 
+## 👀 使用範例
+
+裝好之後，直接用中文問 Claude Code / Codex 就可以。
+
+**範例一：讀一篇文章並解釋**——「幫我看 Visa 商業解碼最後一篇，並且解釋他們怎麼算 ROIC」
+
+AI 會自己找到 Visa 系列（標題叫「過路財神」）的最後一篇，讀完全文和文中圖表，再把 ROIC 的算法拆給你看：
+
+<img src="docs/images/example-visa-roic.png" alt="在 Claude Code 問 Visa 商業解碼最後一篇怎麼算 ROIC 的範例" width="720">
+
+（截圖中原文付費圖表的數字已模糊處理。）
+
+**範例二：找出談到某個主題的文章**——「幫我搜尋曼報 pro 中可能提到 FDE 的文章」
+
+AI 先看完 122 篇標題，挑出 25 篇可能相關的去讀內文，最後回報 3 篇真的有談到 FDE（附重點與連結），也列出讀了但沒提到的 22 篇：
+
+<img src="docs/images/example-fde-search.png" alt="在 Claude Code 搜尋曼報中提到 FDE 的文章的範例" width="720">
+
+（截圖中會員交流活動的會員發言已模糊處理。）
+
+---
+
 ## 📌 第 0 步：先準備好你的曼報 Pro 帳密（必做）
 
 這個工具**不附帶任何帳號**，要用你自己的《曼報 Pro》會員帳號登入，而且只支援「**Email＋密碼**」登入。不管你等一下是交給 AI 安裝還是自己手動裝，都要先準備好這組帳密。
@@ -200,14 +222,6 @@ args = ["--directory", "/Users/you/mannypro-mcp", "run", "mannypro-mcp"]
 - 「把商業解碼『因貨得福』系列 I–IV 全部抓下來，合成一份 Markdown」
 - 「幫我看 Visa 商業解碼最後一篇，並且解釋他們怎麼算 ROIC」
 
-### 使用範例：讀一篇文章並解釋
-
-在 Claude Code 裡問「幫我看 Visa 商業解碼最後一篇，並且解釋他們怎麼算 ROIC」。AI 會自己找到 Visa 系列（標題叫「過路財神」）的最後一篇，讀完全文和文中圖表，再把 ROIC 的算法拆給你看：
-
-<img src="docs/images/example-visa-roic.png" alt="在 Claude Code 問 Visa 商業解碼最後一篇怎麼算 ROIC 的範例" width="720">
-
-（截圖中原文付費圖表的數字已模糊處理。）
-
 ### 找「哪些文章談到某個主題」
 
 網站沒有全文搜尋 API，而且很多文章標題不會直接寫關鍵字（例如 Visa 系列叫「過路財神」）。所以 server 內建的使用說明會請 AI 照這個流程做，不會一次把全部文章抓下來：
@@ -217,11 +231,7 @@ args = ["--directory", "/Users/you/mannypro-mcp", "run", "mannypro-mcp"]
 3. `grep_articles` 只讀這幾篇候選文章的全文，找關鍵字
 4. 回報：真的有談到的文章＋摘錄、讀了但沒提到的、哪些只看過標題
 
-例如：「幫我搜尋曼報 pro 中可能提到 FDE 的文章」。AI 先看完 122 篇標題，挑出 25 篇可能相關的去讀內文，最後回報 3 篇真的有談到 FDE（附重點與連結），也列出讀了但沒提到的 22 篇：
-
-<img src="docs/images/example-fde-search.png" alt="在 Claude Code 搜尋曼報中提到 FDE 的文章的範例" width="720">
-
-（截圖中會員交流活動的會員發言已模糊處理。）
+實際畫面請看最上面的「[使用範例](#-使用範例)」。
 
 `get_article` 回傳的格式：
 
