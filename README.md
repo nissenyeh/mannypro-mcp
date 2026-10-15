@@ -12,6 +12,8 @@
 > **請只供個人閱讀、整理筆記使用，不要轉載或散布付費內容。**
 >
 > 👉 還不是會員？**[訂閱《曼報 Pro》](https://pro.manny-li.com/join)**，支持作者持續產出深度內容。
+>
+> 這是個人製作的**非官方工具**，與《曼報 Pro》、Manny Li、Firstory 沒有任何關係。
 
 ## 👀 使用範例
 
@@ -367,3 +369,12 @@ args = ["--directory", "/Users/you/mannypro-mcp", "run", "mannypro-mcp"]
    - Codex：`codex mcp add mannypro -- uv --directory <家目錄>/mannypro-mcp run mannypro-mcp`，再用 `codex mcp list` 確認。
    - 如果 `uv` 不在 PATH（例如剛安裝），command 改用 uv 的絕對路徑（`which uv` 或 `~/.local/bin/uv`）。
 6. **告訴使用者**：已經裝好；需要**關掉並重新開啟** Claude Code / Codex 才會出現 mannypro 工具；附上兩三句可以直接說的範例（如「列出曼報最新 10 篇文章」）。
+
+---
+
+## 關於作者
+
+我是 Nissen，平常在做企業 AI 導入（FDE）。這個工具是我讀《曼報 Pro》、整理筆記時順手做的，有問題或建議歡迎開 issue。
+
+📝 [Blog](https://nissen.ghost.io/) · 💼 [LinkedIn](https://www.linkedin.com/in/nissen-yeh-923484169/)
+
