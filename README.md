@@ -71,7 +71,9 @@
 |---|---|---|
 | `list_tags` | 列分類（商業解碼、科技曼讀、巨人之聲、曼報俱樂部） | 否 |
 | `list_articles(tag, limit, cursor, oldest_first)` | 列文章，可依分類篩選、翻頁 | 否 |
-| `search_articles(keyword)` | 用關鍵字搜標題／副標／分類 | 否 |
+| `list_all_titles` | 一次列出全部文章的日期、分類、標題、slug | 否 |
+| `search_articles(keyword)` | 用關鍵字比對標題／副標／分類／網址（不搜內文） | 否 |
+| `grep_articles(articles, pattern)` | 只讀指定幾篇的全文，列出符合關鍵字的段落 | 是（自動） |
 | `get_article(article)` | 抓全文轉 Markdown；`article` 可以是網址、slug 或標題關鍵字 | 是（自動登入） |
 | `login_status` | 檢查帳密能不能登入、能不能讀到全文 | 是 |
 
@@ -189,6 +191,17 @@ args = ["--directory", "/Users/you/mannypro-mcp", "run", "mannypro-mcp"]
 - 「搜尋曼報講 Stripe 的文章」
 - 「抓曼報〈名利雙收 I〉全文，整理成重點筆記」
 - 「把商業解碼『因貨得福』系列 I–IV 全部抓下來，合成一份 Markdown」
+
+### 找「哪些文章談到某個主題」
+
+網站沒有全文搜尋 API，而且很多文章標題不會直接寫關鍵字（例如 Visa 系列叫「過路財神」）。所以 server 內建的使用說明會請 AI 照這個流程做，不會一次把全部文章抓下來：
+
+1. `list_all_titles` 拉全部標題
+2. 依標題判斷哪些可能相關（例如找 FDE，也會想到 Palantir、企業導入 AI 的文章）
+3. `grep_articles` 只讀這幾篇候選文章的全文，找關鍵字
+4. 回報：真的有談到的文章＋摘錄、讀了但沒提到的、哪些只看過標題
+
+例如：「幫我找曼報所有討論到 FDE 的文章」。
 
 `get_article` 回傳的格式：
 
