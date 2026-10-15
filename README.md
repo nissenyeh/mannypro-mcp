@@ -191,6 +191,15 @@ args = ["--directory", "/Users/you/mannypro-mcp", "run", "mannypro-mcp"]
 - 「搜尋曼報講 Stripe 的文章」
 - 「抓曼報〈名利雙收 I〉全文，整理成重點筆記」
 - 「把商業解碼『因貨得福』系列 I–IV 全部抓下來，合成一份 Markdown」
+- 「幫我看 Visa 商業解碼最後一篇，並且解釋他們怎麼算 ROIC」
+
+### 使用範例：讀一篇文章並解釋
+
+在 Claude Code 裡問「幫我看 Visa 商業解碼最後一篇，並且解釋他們怎麼算 ROIC」。AI 會自己找到 Visa 系列（標題叫「過路財神」）的最後一篇，讀完全文和文中圖表，再把 ROIC 的算法拆給你看：
+
+<img src="docs/images/example-visa-roic.png" alt="在 Claude Code 問 Visa 商業解碼最後一篇怎麼算 ROIC 的範例" width="720">
+
+（截圖中原文的付費圖表已模糊處理。）
 
 ### 找「哪些文章談到某個主題」
 
